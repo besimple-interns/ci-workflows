@@ -1,0 +1,35 @@
+name: No-build gate
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Broccoli validation gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Detect initial validation deferral
+        id: marker
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            core.info(`Original workflow candidate: ${context.sha}`);
+            let deferred = false;
+            if (context.eventName === 'pull_request' && process.env.GITHUB_RUN_ATTEMPT === '1') {
+              const { data: commit } = await github.rest.repos.getCommit({
+                ...context.repo,
+                ref: context.payload.pull_request.head.sha,
+              });
+              if (typeof commit.commit?.message !== 'string') {
+                throw new Error('Missing commit message');
+              }
+              deferred = commit.commit.message.toLowerCase().includes('#no-build');
+            }
+            core.setOutput('deferred', String(deferred));
+      - name: Broccoli validation deferred v1
+        if: steps.marker.outputs.deferred == 'true'
+        run: exit 1
