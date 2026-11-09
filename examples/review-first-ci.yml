@@ -1,0 +1,77 @@
+# Merge this pattern into the existing workflow; preserve its triggers and validation commands.
+# Replace the example CI context everywhere with the exact existing required check name.
+# Replace ./scripts/validate.sh with the repository's existing validation commands.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Metadata edits must not cancel candidate validation; merge candidates stay independent.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}${{ github.event.action == 'edited' && !github.event.changes.base.ref && format('-metadata-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  admission:
+    name: CI admission
+    if: github.event.action != 'edited' || github.event.changes.base.ref
+    uses: besimple-interns/ci-workflows/.github/workflows/no-build-gate.yml@6d9769955bad6daf0091c5c68f94f1981df8321a
+    permissions:
+      contents: read
+      statuses: write
+    with:
+      required-context: CI
+
+  validation:
+    needs: admission
+    if: needs.admission.outputs.run_validation == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - run: ./scripts/validate.sh
+
+  required:
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base.ref && 'PR metadata (CI)' || 'CI' }}
+    needs: [admission, validation]
+    if: ${{ always() && !(needs.admission.result == 'success' && needs.admission.outputs.run_validation == 'false') }}
+    permissions:
+      contents: read
+      statuses: write
+    concurrency:
+      group: validation-status-${{ github.sha }}-CI
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Preserve validation on metadata edits
+        if: github.event.action == 'edited' && !github.event.changes.base.ref
+        run: echo 'Metadata changed; existing candidate validation remains authoritative.'
+      - name: Require admitted and successful validation
+        if: github.event.action != 'edited' || github.event.changes.base.ref
+        env:
+          ADMISSION_RESULT: ${{ needs.admission.result }}
+          RUN_VALIDATION: ${{ needs.admission.outputs.run_validation }}
+          VALIDATION_RESULT: ${{ needs.validation.result }}
+        run: |
+          test "$ADMISSION_RESULT" = success
+          test "$RUN_VALIDATION" = true
+          test "$VALIDATION_RESULT" = success
+      - name: Report actual validation result
+        if: ${{ always() && !cancelled() && (github.event.action != 'edited' || github.event.changes.base.ref) }}
+        uses: besimple-interns/ci-workflows/actions/validation-status@6d9769955bad6daf0091c5c68f94f1981df8321a
+        with:
+          context: CI
+          result: ${{ job.status }}

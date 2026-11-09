@@ -100,63 +100,11 @@ expected integration and verify hosted enforcement before declaring activation.
 
 ## Consumer wiring
 
-Replace `<GATE_SHA>` with the same reviewed full SHA in both references:
-
-```yaml
-jobs:
-  validation-gate:
-    uses: besimple-interns/ci-workflows/.github/workflows/no-build-gate.yml@<GATE_SHA>
-    permissions:
-      contents: read
-      statuses: write
-    with:
-      required-context: Required validation
-
-  build:
-    needs: validation-gate
-    if: needs.validation-gate.outputs.run_validation == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-      - run: ./scripts/validate.sh
-
-  required-aggregate:
-    name: Required validation
-    concurrency:
-      group: validation-status-${{ github.sha }}-Required validation
-      cancel-in-progress: false
-      queue: max
-    if: always() && !(needs.validation-gate.result == 'success' && needs.validation-gate.outputs.run_validation == 'false')
-    needs: [validation-gate, build]
-    permissions:
-      contents: read
-      statuses: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require a valid admission decision
-        if: needs.validation-gate.result != 'success' || needs.validation-gate.outputs.run_validation != 'true'
-        run: exit 1
-      - name: Require build success
-        env:
-          BUILD_RESULT: ${{ needs.build.result }}
-        run: test "$BUILD_RESULT" = success
-      - name: Report actual validation result
-        if: always() && !cancelled()
-        uses: besimple-interns/ci-workflows/actions/validation-status@<GATE_SHA>
-        with:
-          context: Required validation
-          result: ${{ job.status }}
-```
-
-The command and name above are illustrative. Preserve existing required contexts,
-classification-permitted skips, result assertions, fork/event guards and immutable
-checkouts. Guard **every** independent validation root, including otherwise
-independent admission checks; keep review and PR-close cleanup outside this gate.
-Metadata reporting can keep its distinct nonrequired name and execute without
-validation or status publication. Merge-group, main, manual and scheduled validation
-retain their normal native checks; pending commit statuses are PR-only.
+For new repositories and v1 migrations, follow the [onboarding procedure](ONBOARDING.md)
+and adapt the [complete workflow template](examples/review-first-ci.yml). They cover
+single/multiple required contexts, nonrequired roots, metadata/base edits, local
+workflow guards and source-versus-live acceptance. The template is the canonical
+wiring example; do not copy a historical v1 example from another consumer.
 
 ## Review and native reruns
 
@@ -173,8 +121,9 @@ its workflow success as proof of validation. Actual failures remain failures.
 
 Consumers pinned to `fd4e80459a757affc4ec13eece9cf310b5262647` still use the historical
 v1 intentional-failure protocol. That retained revision and Broccoli's existing v1
-classifier remain available. Do not change other consumers merely to adopt v2;
-rollout beyond the Pila8 pilot requires explicit human instructions.
+classifier remain available for historical runs. New requested repository onboarding
+uses v2 through the canonical procedure; an individual repository migration does not
+authorize unrelated consumer changes.
 
 ## Release and recovery
 
@@ -185,19 +134,19 @@ do not rewrite them or treat them as required validation. Roll back consumer
 guidance only after restoring a compatible provider. This documentation change
 does not authorize deployment, runtime synchronization or changes to required checks.
 
-Publish/review the shared change, land it on protected `main`, then pin the Pila8
-consumer to the retained commit containing both gate and reporter. Release Colony's
-matching scheduling guidance before using v2 marked iterations. Existing runtimes
-need normal adoption or separately authorized steering. Merges, releases and runtime
-synchronization remain operator-owned; source publication does not prove activation.
+Publish/review shared changes and retain the reviewed commit on protected `main`
+before activating consumer pins. Each consumer adopts both pins and matching
+aggregate queues together, preserving required names and merge protection. Colony's
+matching scheduling guidance must be available before marked review-first iterations;
+existing runtimes use normal adoption or separately authorized steering. Merging,
+releasing and runtime synchronization remain operator-owned.
 
-For status visibility, publish the shared prerequisite before updating the Pila8
-pilot's gate/reporter pins together with the matching aggregate concurrency groups.
-Historical runs retain their old pins and behavior. No other consumer changes
-pins. No App permissions, required names, merge policy, runtime release or production
-write is introduced. Roll back both Pila8 pins and aggregate concurrency together;
-retain the shared revision. Existing statuses survive source rollback and still
-require actual validation; do not manually mark them successful.
+The same contract applies to every requested repository onboarding, including
+Pila8, Colony and Broccoli. Source publication does not prove activation, and a
+historical run retains its original pinned behavior. No new App permission, required
+context, merge policy or runtime service is needed. Follow the onboarding procedure
+for per-repository evidence and recovery rather than inferring fleet completion
+from a shared release.
 
 For the manual-label pilot, publish both PRs for review, then land this shared
 prerequisite first and retain its reviewed SHA before activating Pila8's pinned
@@ -207,13 +156,6 @@ to the prior v2 revision; retain the shared commit. Pending statuses still requi
 real validation as described below. No service or runtime release is needed for
 this optional shared input.
 
-After activation, verify one marked pilot: native validation Skipped, exact required
-statuses Pending and merge blocked; accepted review evidence then full rerun of the same
-candidate; actual successful validation resolves those statuses. Local checks cannot
-prove GitHub's live ruleset association or Colony's deployed behavior.
-
-Recover by stopping marked iterations and reverting consumer wiring and both pins
-together. Existing Pending statuses survive source rollback: finish a compatible
-full rerun against that candidate, or publish a reviewed ordinary-validation source
-update. Never manually mark unvalidated statuses successful. Preserve retained
-shared history, native merge protection and existing preview/staging recovery.
+The [onboarding procedure](ONBOARDING.md#4-distinguish-source-delivery-from-activation)
+owns per-repository activation evidence and rollback. Preserve retained shared
+history, native merge protection and existing preview/staging recovery.
