@@ -123,8 +123,11 @@ retain their normal native checks; pending commit statuses are PR-only.
 
 ## Review and native reruns
 
-Broccoli's existing structured eligibility v1 is unchanged. Colony binds the newest
-eligible review to the original run's immutable source/base/merge candidate before
+Broccoli no longer publishes `Broccoli approval eligibility v1`; the shared gate
+and reporter do not read it and need no code or pin change for its removal.
+Colony uses existing review evidence or an authorized human review disposition
+under its [review guidance](https://github.com/besimple-graveyard/rsi-broccoli/blob/main/src/colony/runtime_profile/guidance/repository.md#review-first-validation),
+bound to the original run's immutable source/base/merge candidate, before
 rerunning **all jobs** of that run. Do not use `--failed`, substitute dispatches,
 empty commits or moving refs. A successful workflow with the v2 deferral marker,
 skipped validation and pending required statuses is unfinished work, not passing
@@ -137,6 +140,13 @@ classifier remain available. Do not change other consumers merely to adopt v2;
 rollout beyond the Pila8 pilot requires explicit human instructions.
 
 ## Release and recovery
+
+For eligibility-check retirement, activate Colony's check-independent review guidance
+before deploying Broccoli's publication removal. Existing runtimes need normal
+replacement or separately authorized steering. Old check runs remain historical;
+do not rewrite them or treat them as required validation. Roll back consumer
+guidance only after restoring a compatible provider. This documentation change
+does not authorize deployment, runtime synchronization or changes to required checks.
 
 Publish/review the shared change, land it on protected `main`, then pin the Pila8
 consumer to the retained commit containing both gate and reporter. Release Colony's
@@ -153,7 +163,7 @@ real validation as described below. No service or runtime release is needed for
 this optional shared input.
 
 After activation, verify one marked pilot: native validation Skipped, exact required
-statuses Pending and merge blocked; eligible review then full rerun of the same
+statuses Pending and merge blocked; accepted review evidence then full rerun of the same
 candidate; actual successful validation resolves those statuses. Local checks cannot
 prove GitHub's live ruleset association or Colony's deployed behavior.
 
