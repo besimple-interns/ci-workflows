@@ -3,6 +3,10 @@ name: No-build gate
 on:
   workflow_call:
     inputs:
+      manual-label:
+        description: Optional label event that admits validation after authorizing its original human sender
+        type: string
+        default: ''
       required-context:
         description: Required status to keep pending until actual validation completes
         type: string
@@ -26,6 +30,7 @@ jobs:
         id: marker
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
+          MANUAL_LABEL: ${{ inputs.manual-label }}
           REQUIRED_CONTEXT: ${{ inputs.required-context }}
         with:
           script: |
@@ -34,8 +39,25 @@ jobs:
               && context.payload.pull_request.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`
               && context.actor !== 'dependabot[bot]'
               && context.payload.pull_request.user.login !== 'dependabot[bot]';
+            const manual = trustedPr && process.env.MANUAL_LABEL
+              && context.payload.action === 'labeled'
+              && context.payload.label?.name?.toLowerCase() === process.env.MANUAL_LABEL.toLowerCase();
+            if (manual) {
+              // Reauthorize the original event sender on EVERY attempt, including reruns.
+              const sender = context.payload.sender;
+              if (sender?.type !== 'User' || !sender.login) {
+                throw new Error('Manual validation requires a human event sender');
+              }
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                ...context.repo,
+                username: sender.login,
+              });
+              if (!['write', 'maintain', 'admin'].includes(data.permission)) {
+                throw new Error('Manual validation requires write, maintain or admin permission');
+              }
+            }
             let deferred = false;
-            if (trustedPr && process.env.GITHUB_RUN_ATTEMPT === '1') {
+            if (trustedPr && !manual && process.env.GITHUB_RUN_ATTEMPT === '1') {
               const { data: commit } = await github.rest.repos.getCommit({
                 ...context.repo,
                 ref: context.payload.pull_request.head.sha,
