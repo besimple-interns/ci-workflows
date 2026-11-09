@@ -7,12 +7,17 @@ inputs:
   result:
     description: Aggregate job status after validating its result tuple
     required: true
+  validation-required:
+    description: Whether real validation was required by the classifier (false describes an intentional not-required result)
+    required: false
+    default: 'true'
 runs:
   using: composite
   steps:
     - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
       env:
         REQUIRED_CONTEXT: ${{ inputs.context }}
+        VALIDATION_REQUIRED: ${{ inputs.validation-required }}
         VALIDATION_RESULT: ${{ inputs.result }}
       with:
         script: |
@@ -25,12 +30,37 @@ runs:
           if (!['success', 'failure'].includes(result)) {
             throw new Error('Expected an executed validation result; skipped/cancelled validation cannot pass');
           }
+          const required = process.env.VALIDATION_REQUIRED;
+          if (!['true', 'false'].includes(required)) {
+            throw new Error('validation-required must be true or false');
+          }
+          // The caller holds the same concurrency group as the gate while reporting.
+          let latest;
+          for await (const response of github.paginate.iterator(github.rest.repos.listCommitStatusesForRef, {
+            ...context.repo, ref: context.sha, per_page: 100,
+          })) {
+            latest = response.data.find(status => status.context === process.env.REQUIRED_CONTEXT);
+            if (latest) break;
+          }
+          const attempt = Number(process.env.GITHUB_RUN_ATTEMPT);
+          const prefix = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/`;
+          const owner = latest?.target_url?.startsWith(prefix)
+            ? latest.target_url.slice(prefix.length).match(/^(\d+)\/attempts\/(\d+)$/) : null;
+          const deferred = latest && ['Awaiting Broccoli review.',
+            'Validation skipped; awaiting Broccoli review and full rerun.'].includes(latest.description);
+          if (!deferred && owner && (BigInt(owner[1]) > BigInt(context.runId)
+            || (owner[1] === String(context.runId) && Number(owner[2]) > attempt))) {
+            core.info('Preserving the newer validation status.');
+            return;
+          }
           // Preserve the gate's immutable test-merge SHA and exact required name.
           await github.rest.repos.createCommitStatus({
             ...context.repo,
             sha: context.sha,
             context: process.env.REQUIRED_CONTEXT,
             state: result,
-            description: result === 'success' ? 'Required validation passed.' : 'Required validation failed; inspect the workflow.',
-            target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/attempts/${process.env.GITHUB_RUN_ATTEMPT}`,
+            description: result === 'failure' ? `Validation failed (attempt ${attempt}).`
+              : required === 'false' ? `Validation not required (attempt ${attempt}).`
+              : `Validation passed (attempt ${attempt}).`,
+            target_url: `${prefix}${context.runId}/attempts/${attempt}`,
           });

@@ -48,15 +48,48 @@ workflow, pass its exact existing required context as `required-context`. Before
 emitting its output, the gate posts a **Pending** commit status on immutable
 `github.sha`, the original test-merge candidate. A required context with both a
 native check and a commit status needs both to pass. The pending status therefore
-blocks merging even when native validation jobs show Skipped, or a previous run
-on the same candidate passed. The test-merge status prevents fallback to an older
+blocks merging when native validation jobs show Skipped and no admitted validation
+has already established a result for that immutable candidate. The test-merge status prevents fallback to an older
 source-head result. See [GitHub's required-check rules](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
 
-The gate also establishes Pending before admitted PR validation. After the existing
-aggregate validates its exact result tuple, `actions/validation-status` publishes
-the actual success/failure using the same context and original SHA. Cancellation
-leaves validation outstanding. Failed status publication is a real reporting failure.
-Metadata-only events must not create or complete these statuses.
+The gate is named **Validation admission** so a successful admission decision is
+not presented as a completed validation. Existing required context names stay unchanged.
+Their commit status describes the lifecycle:
+
+- **Awaiting Broccoli review.** means the marked initial attempt deferred validation.
+- **Validation running (attempt N).** means the gate admitted that exact attempt.
+- **Validation passed (attempt N).** or **Validation failed (attempt N).** reports the
+  actual aggregate result after its existing result-tuple assertions.
+- **Validation not required (attempt N).** is available only when the caller's existing
+  classifier says its suites are unnecessary; pass `validation-required: 'false'`
+  to the reporter. This input changes wording only and cannot override `result`.
+
+Every status links to `/actions/runs/<run-id>/attempts/<attempt>`. An accepted full
+rerun is visible through GitHub's native queued checks until its admission job starts;
+Colony does not publish a synthetic requested status or need status-write permission.
+Cancellation leaves validation outstanding. Failed status publication is a real
+reporting failure. Metadata-only events must not create or complete these statuses.
+
+Gate and final aggregate status writes must use the same job concurrency group:
+`validation-status-${{ github.sha }}-<exact required context>`, with
+`cancel-in-progress: false` and `queue: max`. The shared gate configures its side;
+callers configure their aggregate job as shown below. Keep this group independent
+of workflow-level cancellation groups. For calls without a required context the
+gate uses the caller workflow name, so give distinct workflows distinct names.
+GitHub's [concurrency queue](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+serializes the read/write pair without replacing pending writers (up to 100 queued
+jobs; exceeding the limit cancels excess jobs and leaves validation outstanding).
+
+Within that lock, both writers read statuses in newest-first pages until finding
+the exact context. Admitted validation takes precedence over deferred validation,
+regardless of run ID: rerunning an older deferred run can resolve a newer deferral
+on the same candidate. Among admitted writers, a newer run ID, or a higher attempt
+of the same run, owns the status and older writers leave it intact. A deferred gate
+also preserves any already admitted or completed status, including legacy result
+descriptions. This prevents late skipped attempts from resetting active or completed
+validation. Existing workflow revisions retain their old pins and behavior on rerun;
+they do not acquire this lock retroactively. Updating the consumer pins creates a
+new candidate with the matched writers; it does not upgrade historical runs.
 
 Only the required gate calls and their aggregate jobs need `statuses: write` in
 addition to `contents: read`. Other gate calls retain only `contents: read` and
@@ -91,6 +124,10 @@ jobs:
 
   required-aggregate:
     name: Required validation
+    concurrency:
+      group: validation-status-${{ github.sha }}-Required validation
+      cancel-in-progress: false
+      queue: max
     if: always() && !(needs.validation-gate.result == 'success' && needs.validation-gate.outputs.run_validation == 'false')
     needs: [validation-gate, build]
     permissions:
@@ -153,6 +190,14 @@ consumer to the retained commit containing both gate and reporter. Release Colon
 matching scheduling guidance before using v2 marked iterations. Existing runtimes
 need normal adoption or separately authorized steering. Merges, releases and runtime
 synchronization remain operator-owned; source publication does not prove activation.
+
+For status visibility, publish the shared prerequisite before updating the Pila8
+pilot's gate/reporter pins together with the matching aggregate concurrency groups.
+Historical runs retain their old pins and behavior. No other consumer changes
+pins. No App permissions, required names, merge policy, runtime release or production
+write is introduced. Roll back both Pila8 pins and aggregate concurrency together;
+retain the shared revision. Existing statuses survive source rollback and still
+require actual validation; do not manually mark them successful.
 
 For the manual-label pilot, publish both PRs for review, then land this shared
 prerequisite first and retain its reviewed SHA before activating Pila8's pinned
