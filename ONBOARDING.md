@@ -7,7 +7,9 @@ does not authorize migrating other repositories, changing rulesets, merging,
 deploying, granting App permissions or synchronizing runtimes.
 
 Start with [the workflow template](examples/review-first-ci.yml), which pins both
-shared components to the same reviewed commit retained on `main`. Merge its job
+shared components to the same reviewed commit retained on `main`. After a squash
+merge, resolve the retained main SHA and update both pins; do not assume the
+original PR-head SHA is the merged revision. Merge the template's job
 pattern into the repository's existing workflow; do not overwrite working triggers,
 validation commands, deployment prerequisites or security restrictions. The
 [shared contract](README.md#no-build-gate-v2) owns lifecycle semantics and permissions.
@@ -101,6 +103,15 @@ original run/attempt and required-context evidence for this sequence:
 | Trusted marked PR before review | Admission succeeds; validation skips; every required status is Pending; GitHub blocks merging |
 | Accepted review and full native rerun | Same immutable candidate; queued/running native attempt; required status links that attempt |
 | Real validation completes | Required statuses reflect actual success or failure; no skipped attempt is treated as passing validation |
+
+If GitHub instead displays **Expected — Waiting for status to be reported**, do
+not classify that as deliberate deferral. Inspect the workflow run itself, including
+completed failures with zero jobs/check runs, the event/ref, shared pin resolution,
+workflow validation errors and the exact required context/integration. A green
+admission job alone also does not establish validation. The deliberate hold has an
+actual Pending status with `Awaiting Broccoli review.` on the immutable candidate.
+If the original workflow never started, there is no deferred attempt to release;
+repair its startup/event wiring before claiming the review-first flow works.
 
 Do not manufacture application failures or production deployments for this proof.
 Review release uses Colony's existing [candidate-bound rerun guidance](https://github.com/besimple-graveyard/rsi-broccoli/blob/main/src/colony/runtime_profile/guidance/repository.md#review-first-validation),
