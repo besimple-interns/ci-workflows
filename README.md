@@ -22,6 +22,25 @@ their read-only tokens cannot establish the required pending statuses. Do not us
 API failures and malformed commit data are real failures; never treat a missing
 output as deferral or admission.
 
+### Optional manual label (Pila8 pilot only)
+
+`manual-label` is an optional string, disabled by default (`''`). Pila8 alone opts
+in with `manual-label: run-ci`. Apply that label to request real selected validation
+on the new `pull_request` `labeled` event's immutable `github.sha`, even when the
+commit has `#no-build` or an automation push produced no runnable attempt. Remove
+and reapply an existing label to make a new request; persistent label membership
+does not admit later pushes. Callers must subscribe to `labeled` and isolate
+unrelated label events from validation and required-status publication.
+
+The event label name must equal the configured nonempty name, ignoring case to
+match GitHub expressions. Only trusted same-repository, non-Dependabot PRs qualify.
+The original event sender must be a human with live write, maintain or admin
+repository permission. Lookup errors or denied permission fail the gate, including
+on reruns; the rerun triggering actor cannot replace that sender. Fork/Dependabot
+events retain ordinary validation with their existing permissions. This input adds
+no elevated checkout, generic bypass or successful validation result: required
+contexts still become Pending and the reporter publishes actual success/failure.
+
 ## Required checks must remain outstanding
 
 GitHub accepts skipped required jobs as successful. For each required validation
@@ -124,6 +143,14 @@ consumer to the retained commit containing both gate and reporter. Release Colon
 matching scheduling guidance before using v2 marked iterations. Existing runtimes
 need normal adoption or separately authorized steering. Merges, releases and runtime
 synchronization remain operator-owned; source publication does not prove activation.
+
+For the manual-label pilot, publish both PRs for review, then land this shared
+prerequisite first and retain its reviewed SHA before activating Pila8's pinned
+gate/reporter references and label-event wiring. No other consumer opts in or
+changes pins. Roll back Pila8's manual input/event wiring and both pins together
+to the prior v2 revision; retain the shared commit. Pending statuses still require
+real validation as described below. No service or runtime release is needed for
+this optional shared input.
 
 After activation, verify one marked pilot: native validation Skipped, exact required
 statuses Pending and merge blocked; eligible review then full rerun of the same
