@@ -1,3 +1,8 @@
+# Ordinary CI with unmarked commits is the default. Before using #no-build, a Coordinator
+# must explicitly accept complete review-to-validation ownership in a durable Mission
+# or Responsibility: verify candidate-bound review, find the deferred run, request its
+# full rerun and track every required check passing. Review automation alone is insufficient.
+# Demonstrate one complete pilot cycle before extending rollout; source wiring is not live acceptance.
 # Merge this pattern into the existing workflow; preserve its triggers and validation commands.
 # Replace the example CI context everywhere with the exact existing required check name.
 # Replace ./scripts/validate.sh with the repository's existing validation commands.

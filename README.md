@@ -1,6 +1,10 @@
 # Shared CI workflows
 
-Reusable GitHub Actions workflows for review-first validation.
+Reusable GitHub Actions workflows for validation. Ordinary CI with unmarked commits
+is the default. Use `#no-build` deferral only when a Coordinator has explicitly
+accepted ownership of review-to-validation follow-through in a durable Mission or
+Responsibility before the marked commit is pushed. Review automation or auto-merge
+alone does not provide that ownership.
 
 ## No-build gate (v2)
 
@@ -108,6 +112,13 @@ wiring example; do not copy a historical v1 example from another consumer.
 
 ## Review and native reruns
 
+The owning Coordinator verifies current review evidence for the exact candidate,
+identifies the matching deferred run, requests its full native rerun, and tracks
+the actual result through every required check passing. Record the owner and
+acceptance in the Mission or Responsibility; keep commits unmarked without that
+accepted ownership. A failed, cancelled or superseded attempt remains unfinished
+and requires an explicit disposition from the owner.
+
 Broccoli no longer publishes `Broccoli approval eligibility v1`; the shared gate
 and reporter do not read it and need no code or pin change for its removal.
 Colony uses existing review evidence or an authorized human review disposition
@@ -146,7 +157,11 @@ Pila8, Colony and Broccoli. Source publication does not prove activation, and a
 historical run retains its original pinned behavior. No new App permission, required
 context, merge policy or runtime service is needed. Follow the onboarding procedure
 for per-repository evidence and recovery rather than inferring fleet completion
-from a shared release.
+from a shared release. Source readiness and correct skipping do not complete
+onboarding: first demonstrate deferred → reviewed → full rerun → every required
+check passing on the correct candidate in one repository. Keep live acceptance
+pending and do not extend the rollout or describe the remaining PRs as a working
+system until that pilot evidence exists.
 
 For the manual-label pilot, publish both PRs for review, then land this shared
 prerequisite first and retain its reviewed SHA before activating Pila8's pinned

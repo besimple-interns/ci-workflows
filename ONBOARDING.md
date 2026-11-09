@@ -1,8 +1,9 @@
 # Onboard a repository to pending review-first CI
 
 Use this procedure when a human requests review-first onboarding or migration of
-an existing repository. The supported default is the current v2 pending-status
-contract, not the historical v1 intentional-failure gate. Requesting one repository
+an existing repository. Ordinary CI with unmarked commits is the default. When
+deferral has an explicitly accepted owner, use the current v2 pending-status
+contract rather than the historical v1 intentional-failure gate. Requesting one repository
 does not authorize migrating other repositories, changing rulesets, merging,
 deploying, granting App permissions or synchronizing runtimes.
 
@@ -37,8 +38,13 @@ failure marker, pinned gate, required names and concurrency restrictions. Update
 those existing contracts with the workflow. A YAML-valid change alone will not
 catch a repository guard that still rejects the new status queue.
 
-Do not add `#no-build` blindly to an unonboarded repository: ordinary CI remains
-available until compatible wiring and review prerequisites are established.
+Before adding `#no-build`, record the Coordinator and their explicit acceptance
+of the complete review-to-validation responsibility in a durable Mission or
+Responsibility. That owner verifies current review evidence for the exact
+source/base/merge candidate, identifies its matching deferred run, requests the
+full native rerun and tracks its actual result until every required check passes.
+Review automation or auto-merge alone is insufficient. Keep commits unmarked
+unless that ownership, compatible wiring and review prerequisites are established.
 
 ## 2. Wire every required context
 
@@ -90,19 +96,31 @@ Do not suppress unrelated diagnostics or bypass repository guards.
 Publish a ready PR with the inventory, source revision, focused evidence, shared
 pin, provider/runtime prerequisites and recovery path. Unavailable live validation
 is an explicit remaining step, not a reason to withhold reviewable repository work.
-Keep each consumer's completion separate: a shared PR or another consumer's success
-does not establish that this repository is onboarded.
+Label this milestone **source ready; live acceptance pending**. Keep each
+consumer's completion separate: a shared PR or another consumer's success does
+not establish that this repository is onboarded. Prove one complete live cycle
+in a single pilot repository before extending the rollout; the remaining PRs
+must not be described as a working system until that evidence exists.
 
 ## 4. Distinguish source delivery from activation
 
-When live observation and rerunning are authorized, retain the candidate SHA,
-original run/attempt and required-context evidence for this sequence:
+When live observation and rerunning are authorized, the owning Coordinator must
+demonstrate one complete cycle. Retain the immutable source/base/merge candidate
+SHAs, original run/attempt, current accepted review evidence, rerun request and
+resulting attempt, and every required context's final result for this sequence:
 
 | Stage | Expected evidence |
 | --- | --- |
 | Trusted marked PR before review | Admission succeeds; validation skips; every required status is Pending; GitHub blocks merging |
-| Accepted review and full native rerun | Same immutable candidate; queued/running native attempt; required status links that attempt |
-| Real validation completes | Required statuses reflect actual success or failure; no skipped attempt is treated as passing validation |
+| Accepted review | Coordinator verifies current review evidence bound to the original immutable candidate and identifies the matching deferred run |
+| Full native rerun | Coordinator requests all jobs of that run; same immutable candidate; queued/running native attempt; required status links that attempt |
+| Real validation passes | Coordinator tracks the actual rerun through every required check passing on that candidate; retain result links |
+
+Correct deferral is only the first half. Failure, cancellation, a missing report
+or a superseded candidate leaves acceptance pending; record the outcome and the
+exact remaining action instead of claiming completion. Resolve failures within
+scope and repeat the candidate-bound review/rerun cycle as needed. Do not extend
+the rollout until the pilot has this complete passing evidence.
 
 If GitHub instead displays **Expected — Waiting for status to be reported**, do
 not classify that as deliberate deferral. Inspect the workflow run itself, including
