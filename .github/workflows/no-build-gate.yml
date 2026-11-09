@@ -2,24 +2,40 @@ name: No-build gate
 
 on:
   workflow_call:
+    inputs:
+      required-context:
+        description: Required status to keep pending until actual validation completes
+        type: string
+        default: ''
+    outputs:
+      run_validation:
+        description: Explicit true admits validation; false means intentional deferral
+        value: ${{ jobs.gate.outputs.run_validation }}
 
-permissions:
-  contents: read
-
+# Callers explicitly grant contents: read, and statuses: write only when using
+# required-context. Do not widen permissions for read-only consumers.
 jobs:
   gate:
     name: Broccoli validation gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      run_validation: ${{ steps.marker.outputs.run_validation }}
     steps:
-      - name: Detect initial validation deferral
+      - name: Decide validation admission
         id: marker
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          REQUIRED_CONTEXT: ${{ inputs.required-context }}
         with:
           script: |
             core.info(`Original workflow candidate: ${context.sha}`);
+            const trustedPr = context.eventName === 'pull_request'
+              && context.payload.pull_request.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`
+              && context.actor !== 'dependabot[bot]'
+              && context.payload.pull_request.user.login !== 'dependabot[bot]';
             let deferred = false;
-            if (context.eventName === 'pull_request' && process.env.GITHUB_RUN_ATTEMPT === '1') {
+            if (trustedPr && process.env.GITHUB_RUN_ATTEMPT === '1') {
               const { data: commit } = await github.rest.repos.getCommit({
                 ...context.repo,
                 ref: context.payload.pull_request.head.sha,
@@ -29,7 +45,17 @@ jobs:
               }
               deferred = commit.commit.message.toLowerCase().includes('#no-build');
             }
-            core.setOutput('deferred', String(deferred));
-      - name: Broccoli validation deferred v1
-        if: steps.marker.outputs.deferred == 'true'
-        run: exit 1
+            if (trustedPr && process.env.REQUIRED_CONTEXT) {
+              // Install merge protection BEFORE dependent jobs can report Skipped.
+              // Single-commit writes have no pagination. Never use a moving ref.
+              await github.rest.repos.createCommitStatus({
+                ...context.repo,
+                sha: context.sha,
+                context: process.env.REQUIRED_CONTEXT,
+                state: 'pending',
+                description: deferred ? 'Validation skipped; awaiting Broccoli review and full rerun.' : 'Validation running.',
+                target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/attempts/${process.env.GITHUB_RUN_ATTEMPT}`,
+              });
+            }
+            if (deferred) core.info('Broccoli validation deferred v2');
+            core.setOutput('run_validation', String(!deferred));
